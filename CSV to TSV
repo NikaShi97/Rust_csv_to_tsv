@@ -9,6 +9,7 @@ version = "0.1.0"
 authors = ["Maria & Nika"]
 [dependencies]
 csv = "1"
+clap = "~2.32"
 
 In command window:
 $ cargo build 
