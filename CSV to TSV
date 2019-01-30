@@ -1,0 +1,249 @@
+/* In command window: 
+$ cargo new --bin csv_to_tsv
+$ cd csv_to_tsv
+
+In Cargo.toml:
+[package]
+name = "csv_to_tsv"
+version = "0.1.0"
+authors = ["Maria & Nika"]
+[dependencies]
+csv = "1"
+
+In command window:
+$ cargo build 
+*/
+
+//Code:
+use std::env;
+use std::fs::File;
+use std::error::Error;
+use std::io::{BufWriter, Write};
+extern crate clap;
+use clap::{Arg, App};
+
+struct Input {          //structure of input file
+	country: String,
+	city: String,
+	accent_city: String,
+	region: i32,
+	population: i32,
+	latitude: f32,
+	longitude: f32
+}
+
+struct PrintCity {         //struture of cities output 
+	cities: Vec<Input>
+}
+
+struct Filter {             //structure of filter for sorting cities
+	filter_arg: i32,
+	func: fn(&Input, i32) -> bool
+}
+
+impl Filter {
+	fn apply_filter(&self, city : &Input) -> bool {
+		(self.func)(city, self.filter_arg)
+	}
+}
+
+
+impl PrintCity {
+	fn add_city(&mut self, _city: Input) -> &mut Self {
+		self.cities.push(_city);
+
+		self
+	}
+
+	fn apply_filters(&mut self, _filters: &Vec<Filter>) -> Vec<&Input> {
+		let res : Vec<&Input> = Vec::new();
+		for _city in &self.cities {
+			let mut _ft : bool = true;
+			for _filter in _filters {
+				if !_filter.apply_filter(_city) {
+					_ft = false
+				}
+			}
+		}
+		res
+	}
+}	
+	
+// csv reader:
+fn read (file_name: String) -> Result<(PrintCity), Box<Error>> {
+	let file = File::open(file_name).expect("file not found");
+	let mut rdr = csv::Reader::from_reader(file);
+	let mut _i: i32 = 0;
+	let mut count = PrintCity {
+		cities: vec! [],
+	};
+	for res in rdr.records() {
+		let _record = res?;
+		let _country: String = String::from(&_record[0]);
+		let _city_name: String = String::from(&_record[1]);
+		let _accent_city: String = String::from(&_record[2]);
+		let _latitude: f32 = String::from(&_record[5]).parse::<f32>().unwrap();
+		let _longitude: f32 = String::from(&_record[6]).parse::<f32>().unwrap();
+		let mut _population : i32 = 0;
+		let mut _region : i32 = 0;
+		match String::from(&_record[3]).parse::<i32>() {
+			Ok(v) => {
+				_region = v as i32;
+			}
+			Err(_e) => {
+				_region = -1;
+			}
+		}
+		
+	    match String::from(&_record[4]).parse::<i32>() {	
+		    Ok(_pop) => {
+		    _population = _pop as i32;
+		    }
+				
+		    Err(_e) => {
+		    _population = -1 as i32;
+		    }
+	    }
+		
+	    let _city : Input = Input {
+		    country: _country,
+		    city: _city_name,
+		    accent_city: _accent_city,
+		    region: _region,
+		    population: _population,
+		    latitude: _latitude,
+		    longitude: _longitude
+	    };
+	    count.add_city(_city);
+	}    
+
+	Ok(count)
+}	
+
+
+//function for population greater than 100,000 
+fn population_gt(city : &Input, _u: i32) -> bool {
+    let _u = 100000;
+	city.population > _u
+}
+//function for population less than 1,000,00
+fn population_lt(city: &Input, _w: i32) -> bool {
+    let _w = 1000000;
+	city.population < _w
+}
+
+// tsv format:
+fn tsv(results : Vec<&Input>) {
+	println!("\tcountry\tcity\taccent_city\tregion\tpopulation\tlatitude\tlongitude\t");
+	for city in results {
+		println!("\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", city.country, city.city,city.accent_city, city.region, city.population, city.latitude, city.longitude)
+	}
+}
+
+// saving tsv to file
+fn tsv_save(results : Vec<&Input>, file_name : String) {
+	let new_file = File::create(file_name).unwrap();
+	let mut writer = BufWriter::new(&new_file);
+	write!(&mut writer, "\tcountry\tcity\taccent_city\tregion\tpopulation\tlatitude\tlongitude\n").unwrap();
+    for city in results {
+	    write!(&mut writer, "\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", city.country, city.city,city.accent_city, city.region, city.population, city.latitude, city.longitude).unwrap();
+	}
+}
+
+fn main() -> Result<(), Box<Error>> {
+	let mut filters: Vec<Filter> = vec![];
+	let matches = App::new("CSV to TSV")
+		.version("0.1.0")
+		.author("Maria & Nika")
+		.about("Trying to get PASS")
+		.arg(Arg::with_name("population_not_none")
+			.takes_value(false))
+		.arg(Arg::with_name("population_none")
+			.takes_value(false))
+        .arg(Arg::with_name("population_greater")
+			.takes_value(true))
+		.arg(Arg::with_name("population_less")
+			.takes_value(true))
+		.arg(Arg::with_name("out")
+			.takes_value(true))
+		.get_matches();
+	
+	let n = matches.value_of("population_not_none");
+	match n {
+		None => {},
+		Some(_s) => {
+			let ft = Filter {
+				filter_arg: -1,
+				func: population_gt
+			};
+			filters.push(ft);
+		}
+	}
+	let n = matches.value_of("population_none");
+	match n {
+		None => {
+			let ft  = Filter {
+				filter_arg: 0,
+				func: population_gt
+			};
+			filters.push(ft);
+		},
+		Some(_s) => {
+			let ft = Filter {
+				filter_arg: 0,
+				func: population_lt,
+			};
+			filters.push(ft);
+		}
+	}
+	let n = matches.value_of("population_greater");
+	match n {
+		None => {},
+		Some(_s) => {
+			match _s.parse::<i32>() {
+				Ok(n) => {
+					let ft = Filter {
+						filter_arg: n,
+						func: population_gt,
+					};
+					filters.push(ft);
+				},
+				Err(_) => { },
+			}
+		}
+	}
+	let n = matches.value_of("population_less");
+	match n {
+		None => { },
+		Some(_s) => {
+			match _s.parse::<i32>() {
+				Ok(m) => {
+					let ft = Filter {
+						filter_arg: m,
+						func: population_lt,
+					};
+					filters.push(ft);
+				},
+				Err(_) => { },
+			}
+			
+		}
+	}
+    let mut cit = read (String::from("worldcitiespop.csv"))?;
+    let res = cit.apply_filters(&filters);
+    let n = matches.value_of("out");
+    match n {
+        None => {
+            tsv(res);
+        },
+        Some(s) => {
+            match s.parse::<String>() {
+                Ok(file_name) => {
+                    tsv_save(res, file_name);
+                },
+                Err(_) => { },
+            }
+        }
+    }    
+    Ok(())
+}
